@@ -153,6 +153,11 @@ def train_pretrain(args_list=None):
                 optimizer.load_state_dict(resume_state["optimizer"])
             if "scheduler" in resume_state:
                 scheduler.load_state_dict(resume_state["scheduler"])
+            
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = config.pretrain_lr
+            for i in range(len(scheduler.base_lrs)):
+                scheduler.base_lrs[i] = config.pretrain_lr
         except Exception as e:
             logger.info(f"Optimizer resume failed: {e}")
 

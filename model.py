@@ -107,7 +107,8 @@ class SparseBlockAttention(nn.Module):
             
             scores = torch.einsum('bqd,bkd->bqk', q_route, k_route) / math.sqrt(self.d_model)
             
-            topk_vals, topk_indices = scores.topk(self.top_k, dim=-1)
+            actual_top_k = min(self.top_k, num_blocks)
+            topk_vals, topk_indices = scores.topk(actual_top_k, dim=-1)
             
             block_mask = torch.zeros(B, num_blocks, num_blocks, dtype=torch.bool, device=x.device)
             block_mask.scatter_(2, topk_indices, True)
@@ -131,7 +132,7 @@ class SparseBlockAttention(nn.Module):
             k_blocks = k.view(B, self.num_heads, num_kv_blocks, self.block_size, self.head_dim)
             v_blocks = v.view(B, self.num_heads, num_kv_blocks, self.block_size, self.head_dim)
             
-            q_mean = q.transpose(1, 2).reshape(B, 1, self.d_model).mean(dim=1)
+            q_mean = q.transpose(1, 2).reshape(B, 1, self.d_model)
             k_flat = k.transpose(1, 2).reshape(B, num_kv_blocks, self.block_size, self.d_model)
             k_mean = k_flat.mean(dim=2)
             
@@ -717,7 +718,7 @@ class CouncilModel(nn.Module):
         self.eval()
         B = input_ids.size(0)
         device = input_ids.device
-        k = self.engram.max_ngram - 1
+        k = self.backbone.engram.max_ngram - 1
         cfg_best_N = getattr(self.config, "best_N", 0)
         n_rec = cfg_best_N if cfg_best_N > 0 else self.config.rl_generate_recursion
         force_full = not getattr(self.config, "adaptive_inference", True)
@@ -755,6 +756,11 @@ class CouncilModel(nn.Module):
             nxt_logits = self._apply_no_repeat_ngram(nxt_logits, out, no_repeat_ngram_size)
             nxt_logits = nxt_logits / max(temperature, 1e-6)
             probs = F.softmax(nxt_logits, dim=-1)
+            
+            if torch.isnan(probs).any() or torch.isinf(probs).any():
+                print("[warn] NaN or Inf detected in probs, forcing fallback")
+                probs = torch.ones_like(probs) / probs.shape[-1]
+                
             nxt = torch.multinomial(probs, num_samples=1)
             if eos_token_id is not None: nxt = torch.where(finished.unsqueeze(-1), torch.full_like(nxt, eos_token_id), nxt)
             out = torch.cat([out, nxt], dim=-1)

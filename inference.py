@@ -26,9 +26,9 @@ def load_council_model(checkpoint_path, config, device):
 
 @torch.no_grad()
 def generate_text(model, tokenizer, prompt, device, max_new_tokens=256, temperature=0.7, repetition_penalty=1.15, no_repeat_ngram_size=3):
-    enc = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512, padding=False)
-    input_ids = enc["input_ids"].to(device)
-    attn = enc["attention_mask"].to(device)
+    ids = tokenizer.encode(prompt, truncation=True, max_length=512)
+    input_ids = torch.tensor([ids], dtype=torch.long, device=device)
+    attn = torch.ones_like(input_ids)
 
     if input_ids.size(1) < 3:
         print(f"[warn] prompt is only {input_ids.size(1)} token(s), output quality will be poor")
